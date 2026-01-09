@@ -10,8 +10,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import audit_pb2
 import audit_pb2_grpc
 
+
 # OCR Path
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# intelligent check: If we are on Windows, use the path. If on Linux (Docker), use default.
+if os.name == 'nt':
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+else:
+    # Linux/Docker usually finds it automatically in the PATH
+    pass 
 
 def clean_name(raw_name):
     """

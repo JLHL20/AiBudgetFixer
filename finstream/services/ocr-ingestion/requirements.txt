@@ -1,0 +1,7 @@
+flask
+flask-cors
+pytesseract
+grpcio
+grpcio-tools
+protobuf
+Pillow

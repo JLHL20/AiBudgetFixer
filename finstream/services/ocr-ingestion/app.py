@@ -1,5 +1,5 @@
 import os
-import sys
+import sys  
 import grpc
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -44,7 +44,12 @@ def analyze_receipt():
         # 3. Microservice Communication (The Handshake)
         # Connect to the Go Audit Engine running on port 50051
         try:
-            with grpc.insecure_channel('localhost:50051') as channel:
+            #with grpc.insecure_channel('localhost:50051') as channel: (<----(TESTING)TEMPORAL PAUSE)
+            # DYNAMIC CONNECTION:
+            # If in Docker, use 'go-engine'. If local, use 'localhost'.
+            go_host = os.getenv('GO_SERVICE_HOST', 'localhost')
+            
+            with grpc.insecure_channel(f'{go_host}:50051') as channel:
                 stub = audit_pb2_grpc.BudgetServiceStub(channel)
                 
                 print(f"Connecting to Microservice for {len(raw_items)} items...")

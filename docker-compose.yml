@@ -1,0 +1,29 @@
+services:
+  # 1. The React Frontend
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Fixes hot-reload on Windows
+    depends_on:
+      - python-api
+
+  # 2. The Python Backend (OCR + Flask)
+  python-api:
+    build: ./finstream/services/ocr-ingestion
+    ports:
+      - "5000:5000"
+    depends_on:
+      - go-engine
+    environment:
+      - GO_SERVICE_HOST=go-engine # We tell Python where Go is living
+
+  # 3. The Go Logic Engine
+  go-engine:
+    build: ./finstream/services/audit-engine
+    ports:
+      - "50051:50051"
