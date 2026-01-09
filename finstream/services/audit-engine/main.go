@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"strings"
 
 	// Import the generated code
+	"google.golang.org/grpc"
 	pb "finstream/audit/proto"
 
-	"google.golang.org/grpc"
 )
 
 // 1. Define our "Fake Database" of Budgets
@@ -26,43 +27,48 @@ type server struct {
 }
 
 // 2. The Logic: Categorize and Check Budget
-func (s *server) EvaluateItem(ctx context.Context, in *pb.ItemRequest) (*pb.BudgetResponse, error) {
-	name := strings.ToUpper(in.GetName())
-	price := in.GetPrice()
-	
-	// A. Categorize based on keywords
-	category := "Unknown"
-	if containsAny(name, []string{"WIPES", "PAMPERS", "BABY", "DR SMITH"}) {
-		category = "Baby Supplies"
-	} else if containsAny(name, []string{"SOCK", "SHIRT", "PANT", "HAIR"}) {
-		category = "Clothing"
-	} else if containsAny(name, []string{"TV", "GAME", "COM", "OPU", "NETWORK"}) {
-		category = "Tech/Home"
-	} else if containsAny(name, []string{"APPLE", "BREAD", "MILK", "MEAT", "PAW PATROL"}) {
-		category = "Groceries"
-	}
+func (s *server) EvaluateItem(ctx context.Context, req *pb.ItemRequest) (*pb.BudgetResponse, error) {
+    name := strings.ToUpper(req.Name)
+    price := req.Price
+    
+    category := "Unknown"
+    suggestion := "Review this"
 
-	// B. Check the Budget
-	limit, exists := categoryBudgets[category]
-	if !exists {
-		limit = 20.00
-	}
+    // --- EXPANDED RULES ---
+    
+    // 1. Transaction Meta-data (Not real items)
+    if strings.Contains(name, "CASH") || strings.Contains(name, "CHANGE") || strings.Contains(name, "SUBTOTAL") || strings.Contains(name, "TOTAL") {
+        category = "Transaction Info"
+        suggestion = "Info"
+    
+    // 2. Groceries (Expanded List)
+    } else if strings.Contains(name, "BREAD") || strings.Contains(name, "BAKERY") || strings.Contains(name, "BAGEL") {
+        category = "Groceries"
+        suggestion = "Approved"
+    } else if strings.Contains(name, "MILK") || strings.Contains(name, "DAIRY") || strings.Contains(name, "CHEESE") || strings.Contains(name, "EGG") {
+        category = "Groceries"
+        suggestion = "Approved"
+    } else if strings.Contains(name, "POTATO") || strings.Contains(name, "BANANA") || strings.Contains(name, "FRUIT") || strings.Contains(name, "VEG") || strings.Contains(name, "ZUCHINNI") || strings.Contains(name, "BROCCOLI") || strings.Contains(name, "LETTUCE") || strings.Contains(name, "TOMATO") || strings.Contains(name, "GRAPE") || strings.Contains(name, "SPROUTS") || strings.Contains(name, "APPLE") || strings.Contains(name, "ONION") || strings.Contains(name, "GARLIC") {
+        category = "Groceries"
+        suggestion = "Healthy Choice!"
+    
+    // 3. Generic/Other
+    } else if strings.Contains(name, "SPECIAL") {
+        category = "Groceries" // Usually a discount item
+        suggestion = "Deal Found"
+    } else if price > 100.00 {
+        category = "Big Purchase"
+        suggestion = "Warning: High Cost"
+    }
 
-	suggestion := "✅ Approved"
-	if price > limit {
-		suggestion = "❌ OVER BUDGET"
-	} else if price > (limit * 0.8) {
-		suggestion = "⚠️ Watch Out (80% Used)"
-	}
+    // Print to console
+    fmt.Printf("Analyzing: %s ($%.2f) -> %s\n", req.Name, req.Price, category)
 
-	// Log it so we can see it in the terminal
-	log.Printf("Analyzing: %s ($%.2f) -> %s", name, price, category)
-
-	return &pb.BudgetResponse{
-		Category:       category,
-		Suggestion:     suggestion,
-		RemainingLimit: limit - price, // Simple math for demo
-	}, nil
+    return &pb.BudgetResponse{
+        Category:      category,
+        Suggestion:    suggestion,
+        RemainingLimit: 500.00 - price,
+    }, nil
 }
 
 // Helper function to check multiple keywords

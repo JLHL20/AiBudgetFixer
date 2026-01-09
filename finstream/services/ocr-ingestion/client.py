@@ -1,98 +1,95 @@
-import grpc
 import sys
 import os
 import pytesseract
 from PIL import Image
 import re
 
-
-# This helps Python find the generated files
+# Helps Python find files
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import audit_pb2
 import audit_pb2_grpc
 
-# Point to the Engine
-# In case there is an error "check this patch"
+# OCR Path
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
+def clean_name(raw_name):
+    """
+    Translates store abbreviations into human-readable names.
+    """
+    # 1. Remove common noise characters at the start
+    name = raw_name.strip()
+    name = re.sub(r'^[Q0-9\W]+', '', name) # Removes "Q", numbers, or symbols at start
+
+    # 2. Dictionary of Store Codes -> Human Words
+    replacements = {
+        "OG ": "Organic ",
+        "BBY ": "Baby ",
+        "CNUT": "Coconut",
+        "HRMHRV": "Harm Harv",
+        "KITHL": "Kitchen",
+        "CHV": "Chive",
+        "VTLFR": "Vital Farms",
+        "FRGRPR": "Forager Project",
+        "SUNBTR": "Sunbutter",
+        "ARKF": "Ark Foods",
+        "EMMYOG": "Emmy's Organics",
+        "HWRRI": "Hu",
+        "SZGF": "Siete",
+        "ETNEV": "Evolved",
+        "CV ": "Cave ",
+        "WTG": "Weighted",
+        "BRUSHED": "", # "Potatoes Brushed" -> "Potatoes"
+        "CAVENDISH": "", # "Banana Cavendish" -> "Banana"
+        "BAG": "",
+    }
+
+    # 3. Apply replacements
+    for code, replacement in replacements.items():
+        name = name.replace(code, replacement)
+
+    # 4. Final Cleanup (Title Case looks nicer: "BABY CARROTS" -> "Baby Carrots")
+    return name.strip().title()
+
 def parse_items(text):
-    """
-    Scans text for lines that look like: "Item Name ... 12.99"
-    Returns a list of tuples: [("Item Name", 12.99), ...]
-    """
     items = []
     lines = text.split('\n')
     
-    # REGEX EXPLANATION:
-    # (.*?)       -> Capture the item name (any text at start)
-    # \s+         -> Space separator
-    # (\d+\.\d{2}) -> Capture the price (number.number)
-    # \s* -> Optional space
-    # [A-Z]?$       -> Optional tax flag (Walmart uses X or N)
-    # $ -> End of line
-    item_pattern = re.compile(r'(.*?)\s+(\d+\.\d{2})\s*[A-Z]?$')
+    # Flexible Regex for finding prices
+    item_pattern = re.compile(r'(.*?)\s+\$?(\d+\.\d{2}).*$')
+
+    # Words to ignore
+    ignore_words = ["SUBTOTAL", "TOTAL", "TAX", "SALE", "PRIME", "CHANGE", "CASH", "VISA", "NET SALES", "SOLD ITEMS", "TARE", "BAL"]
 
     for line in lines:
-        # Clean up the line
-        clean_line = line.strip()
+        clean_line = line.strip().upper()
+        
+        # Skip ignore words
+        if any(word in clean_line for word in ignore_words):
+            continue
+
+        # Skip negative numbers
+        if "-" in clean_line and "$" in clean_line:
+            continue
+
         match = item_pattern.search(clean_line)
         
-        # Filter out "trash" lines (dates, phone numbers, subtotals)
-        if match and "SUBTOTAL" not in clean_line and "TOTAL" not in clean_line:
-            name = match.group(1).strip()
-            # If name is too short (OCR noise), skip it
-            if len(name) > 3:
-                price = float(match.group(2))
-                items.append((name, price))
+        if match:
+            raw_name = match.group(1).strip()
+            
+            # Filter noise
+            if len(raw_name) > 2 and "@" not in raw_name:
+                try:
+                    price = float(match.group(2))
+                    
+                    # --- NEW STEP: CLEAN THE NAME ---
+                    human_name = clean_name(raw_name)
+                    
+                    items.append((human_name, price))
+                except ValueError:
+                    continue
                 
     return items
 
-def run(image_path):
-    print(f"📸 Scanning Receipt: {image_path}")
-    
-    try:
-        raw_text = pytesseract.image_to_string(Image.open(image_path))
-    except Exception as e:
-        print(f"❌ OCR Failed: {e}")
-        return
-
-    items = parse_items(raw_text)
-    if not items:
-        print("⚠️ No items found.")
-        return
-
-    print(f"🔌 Connecting to Smart Budget Engine...\n")
-    
-    with grpc.insecure_channel('localhost:50051') as channel:
-        # NOTICE: We use the new Stub name if the service name changed, 
-        # but usually it's best to check audit_pb2_grpc.py. 
-        # Since we changed the service to BudgetService, we use that Stub:
-        stub = audit_pb2_grpc.BudgetServiceStub(channel)
-        
-        # New Table Header
-        print(f"{'ITEM NAME':<25} | {'PRICE':<8} | {'CATEGORY':<15} | {'STATUS'}")
-        print("-" * 75)
-
-        for name, price in items:
-            # NEW REQUEST TYPE
-            request = audit_pb2.ItemRequest(
-                name=name, 
-                price=price
-            )
-            
-            try:
-                # NEW METHOD CALL
-                response = stub.EvaluateItem(request)
-                
-                print(f"{name[:23]:<25} | ${price:<7.2f} | {response.category:<15} | {response.suggestion}")
-                
-            except grpc.RpcError as e:
-                print(f"❌ Error: {e.details()}")
-
-        print("-" * 75)
-    
-if __name__ == '__main__':
-    # Use the receipt.jpg if no argument is provided
-    img = sys.argv[1] if len(sys.argv) > 1 else "receipt.jpg"
-    run(img)
+# Note: The 'run' function is handled by app.py now, so we don't strictly need it here,
+# but keeping parse_items available for import is key.
