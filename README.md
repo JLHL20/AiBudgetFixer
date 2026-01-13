@@ -51,13 +51,6 @@ This project is fully containerized. You do not need to install Python, Go, or N
 3.  **Access the App:**
     Open your browser and visit: `http://localhost:3000`
 
-## 🔮 Future Roadmap
-
-* [ ] Integration with Gemini AI / OpenAI for advanced item recognition.
-* [ ] Database persistence (PostgreSQL) for user history.
-* [ ] User Authentication (OAuth2).
-* [ ] Data visualization charts.
-
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
